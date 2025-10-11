@@ -8,8 +8,8 @@ class Db:
     db_database: str
     db_host: str
     db_port: int
-    table_tasks:str
-    table_datas:str
+    table_events:str
+    table_tickets:str
 
 @dataclass
 class Logs:
@@ -34,8 +34,8 @@ def get_settings(path: str):
             db_database=env.str('DB_DATABASE'),
             db_host=env.str('DB_HOST'),
             db_port=env.int('DB_PORT'),
-            table_tasks='seatgeek_task',
-            table_datas='seatgeek_data',
+            table_events='seatgeek_events',
+            table_tickets='seatgeek_tickets',
         ),
         logs=Logs(
             level=env.str('LOGS_LEVEL'),

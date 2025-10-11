@@ -4,5 +4,6 @@ venv
 __pycache__
 examples
 *.env
-proxies/proxies_list.json
+proxies/*proxies_list*
 logs
+chrome_data

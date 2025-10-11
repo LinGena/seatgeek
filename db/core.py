@@ -8,8 +8,8 @@ class Db():
     def __init__(self):
         self.logger = Logger().get_logger(__name__)
         self.connecting()
-        self.table_tasks = settings.db.table_tasks    
-        self.table_datas = settings.db.table_datas 
+        self.table_events= settings.db.table_events
+        self.table_tickets= settings.db.table_tickets
 
     def connecting(self, max_retries=10, delay=5) -> None:    
         for attempt in range(max_retries):
@@ -72,39 +72,52 @@ class IsDbTable(Db):
         super().__init__()
 
     def check(self) -> None:
-        if self.check_tables(self.table_tasks):
-            self.create_tasks()
-        if self.check_tables(self.table_datas):
-            self.create_datas()
+        if self.check_tables(self.table_events):
+            self.create_events()
+        if self.check_tables(self.table_tickets):
+            self.create_tickets()
 
-    def create_tasks(self) -> None:
+    def create_events(self) -> None:
         self.insert(f"""
-            CREATE TABLE `{self.table_tasks}` (
+            CREATE TABLE `{self.table_events}` (
                 `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                `year` VARCHAR(255),
-                `make` VARCHAR(255),
-                `type` VARCHAR(255),
-                `model` VARCHAR(255),
-                `engine` VARCHAR(255),
-                `response` JSON,
-                `status` INTEGER,
-                `date_update` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                INDEX idx_year (year),
-                INDEX idx_make (make),
-                INDEX idx_type (type),
-                INDEX idx_model (model),
-                INDEX idx_engine (engine),
-                UNIQUE KEY uniq_year_make_model_engine (year(50), make(50), type(50), model(50), engine(70))
+                `event_id` VARCHAR(255) NOT NULL,
+                `event_url` VARCHAR(500),
+                `date_added` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `task_name` VARCHAR(50) NOT NULL,
+                `status` VARCHAR(50),
+                UNIQUE KEY `unique_event_task` (`event_id`, `task_name`),
+                INDEX `idx_task_name` (`task_name`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
         """)
 
-    def create_datas(self) -> None:
+    def create_tickets(self) -> None:
         self.insert(f"""
-            CREATE TABLE `{self.table_datas}` (
+            CREATE TABLE `{self.table_tickets}` (
                 `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                `datas` JSON,
-                `URL` VARCHAR(255),
-                `Timestamp` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                `event_id` VARCHAR(50) NOT NULL,
+                `listing_id` VARCHAR(255),
+                `section_id` VARCHAR(50),
+                `section_name` VARCHAR(255),
+                `section_name_raw` VARCHAR(255),
+                `row_name` VARCHAR(50),
+                `seat_numbers` TEXT,
+                `ticket_quantity_lots` VARCHAR(255),
+                `ticket_quantity` VARCHAR(255),
+                `value_score` VARCHAR(255),
+                `quality_score` VARCHAR(255),
+                `listing_notes` TEXT,
+                `display_price_pre_checkout` VARCHAR(255),
+                `all_in_price_pre_checkout` VARCHAR(255),
+                `display_price_checkout` VARCHAR(255),
+                `buyer_fee_checkout` VARCHAR(255),
+                `other_fee_checkout` VARCHAR(255),
+                `sales_tax_checkout` VARCHAR(255),
+                `all_in_price_checkout` VARCHAR(255),
+                `cache_time` VARCHAR(50),
+                `date_added` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `task_name` VARCHAR(50),
+                INDEX idx_event_id (event_id)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
         """)
     
