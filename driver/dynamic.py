@@ -2,6 +2,7 @@ import os
 import uuid
 import random
 from seleniumwire import undetected_chromedriver as uc_webdriver_wire
+from selenium_stealth import stealth
 from dotenv import load_dotenv
 from utils.func import load_from_file_json
 
@@ -15,15 +16,17 @@ class ChromeWebDriver:
         os.makedirs(self.folder_temp, exist_ok=True)
         self._set_chrome_options()
         self._create_chromedriver()
-        return self.driver, self.folder_temp
+        self._apply_stealth_mode()
+        return self.driver, self.folder_temp, self.current_proxy
 
     def _create_chromedriver(self):
         driver_version = os.getenv("DRIVER_VERSION", 136)
         proxies_list = load_from_file_json('proxies/proxies_list.json')
         random.shuffle(proxies_list)
+        self.current_proxy = proxies_list[0]
         proxy = {
-            'http':proxies_list[0],
-            'https':proxies_list[0]
+            'http':self.current_proxy,
+            'https':self.current_proxy
         }
         seleniumwire_options = {
             'proxy': proxy,
@@ -36,7 +39,17 @@ class ChromeWebDriver:
                                     enable_cdp_events=True,
                                     options=self.options,
                                     seleniumwire_options=seleniumwire_options)
-        self.driver.set_page_load_timeout(60) 
+        self.driver.set_page_load_timeout(60)
+
+    def _apply_stealth_mode(self):
+        stealth(self.driver,
+            languages=["en-US", "en"],
+            vendor="Google Inc.",
+            platform="Win32",
+            webgl_vendor="Intel Inc.",
+            renderer="Intel Iris OpenGL Engine",
+            fix_hairline=True,
+        )
 
     def _set_chrome_options(self):
         self.options = uc_webdriver_wire.ChromeOptions()

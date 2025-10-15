@@ -22,6 +22,7 @@ class Logs:
 class Settings:
     db: Db
     logs: Logs
+    captcha_api_key: str = None
 
 def get_settings(path: str):
     env = Env()
@@ -42,7 +43,8 @@ def get_settings(path: str):
             dir=env.str('LOGS_DIR'),
             format=env.str('LOGS_FORMAT'),
             separate_log_without_rollover=env.str('LOGS_ROLLOVER')
-        )
+        ),
+        captcha_api_key=env.str('TWOCAPTCHA', default=None)
     )
 
 settings = get_settings('.env')

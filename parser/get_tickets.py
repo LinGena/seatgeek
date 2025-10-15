@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from driver.dynamic import ChromeWebDriver
 from utils.logger import Logger
+from utils.captcha_solver import CaptchaSolver
 from db.core import Db
 
 logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
@@ -21,8 +22,10 @@ class GetTickets:
     def get(self):
         try:
             chrome_driver = ChromeWebDriver()
-            self.driver, self.folder_temp = chrome_driver.create_driver()
+            self.driver, self.folder_temp, self.current_proxy = chrome_driver.create_driver()
             self.db = Db()
+            self.captcha_solver = CaptchaSolver(self.driver, self.logger)
+            
             time_start = time.time()
             print('time_start',time_start)
             for i in range(100):
@@ -30,8 +33,8 @@ class GetTickets:
                 self.task_name = None
                 event_url = self.get_event_url()
                 if not event_url:
-                    break  
-                self.get_cookies(event_url)
+                    break
+                self.get_api_content(event_url)
             time_end = time.time()
             print('time_end',time_end)
             print('TIME for 100 =', time_end-time_start)
@@ -71,15 +74,10 @@ class GetTickets:
             self.logger.error(f"Ошибка при получении события: {ex}")
         return None
 
-    def get_cookies(self, event_url: str, wait_time: int = 20):
+    def get_api_content(self, event_url: str, wait_time: int = 30):
         try:
-            try:
-                self.driver.execute_cdp_cmd("Network.clearBrowserCache", {})
-            except:
-                pass
-            
+            self.driver.execute_cdp_cmd("Network.clearBrowserCache", {})
             del self.driver.requests
-            
             self.driver.get(event_url)
 
             api_request = None
@@ -91,8 +89,32 @@ class GetTickets:
                             api_request = request
                             break
                 if api_request:
-                    break
+                    break 
                 time.sleep(0.5)
+                # Проверяем капчу в процессе ожидания (может появиться)
+                has_captcha, ip_blocked = self.captcha_solver.check_captcha()
+                
+                if ip_blocked:
+                    print(f"🔴 Прокси заблокирован во время ожидания!")
+                    self.update_status(None)
+                    raise Exception("Proxy blocked by DataDome, need to restart")
+                
+                if has_captcha:
+                    print(f"⚠️  Капча появилась во время ожидания API!")
+                    # time.sleep(10000)
+                    self.captcha_solver.save_page_with_captcha()
+                    
+                    # Пытаемся решить капчу с помощью OpenCV
+                    solved = self.captcha_solver.solve_slider_captcha()
+                    
+                    if solved:
+                        print(f"✅ Капча решена с помощью OpenCV! Продолжаем...")
+                        # Сбрасываем таймер для ожидания API
+                        start_time = time.time()
+                    else:
+                        print(f"❌ Не удалось решить капчу автоматически")
+                        self.update_status(None)
+                        return
             if not api_request:
                 self.update_status(None)
                 print(f'No api_request')
