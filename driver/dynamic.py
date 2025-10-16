@@ -14,6 +14,7 @@ class ChromeWebDriver:
         profile_id = str(uuid.uuid4())
         self.folder_temp = f"{os.path.abspath('chrome_data')}/{profile_id}"
         os.makedirs(self.folder_temp, exist_ok=True)
+        self.stealth_params = self._get_random_stealth_params()
         self._set_chrome_options()
         self._create_chromedriver()
         self._apply_stealth_mode()
@@ -41,21 +42,78 @@ class ChromeWebDriver:
                                     seleniumwire_options=seleniumwire_options)
         self.driver.set_page_load_timeout(60)
 
+    def _get_random_stealth_params(self):
+        """Генерирует случайные но реалистичные параметры для stealth mode"""
+        
+        # Случайная платформа
+        platforms = [
+            {
+                "platform": "Win32",
+                "vendors": [
+                    ("NVIDIA Corporation", ["NVIDIA GeForce GTX 1060", "NVIDIA GeForce RTX 2060", "NVIDIA GeForce RTX 3060"]),
+                    ("Intel Inc.", ["Intel(R) UHD Graphics 630", "Intel(R) HD Graphics 620", "Intel Iris OpenGL Engine"]),
+                    ("AMD", ["AMD Radeon RX 580", "AMD Radeon RX 5700", "Radeon(TM) RX Vega 10 Graphics"]),
+                ]
+            },
+            {
+                "platform": "MacIntel",
+                "vendors": [
+                    ("Apple Inc.", ["Apple M1", "Apple M2", "Apple GPU"]),
+                    ("Intel Inc.", ["Intel(R) Iris(TM) Plus Graphics 640", "Intel Iris Pro OpenGL Engine"]),
+                ]
+            },
+            {
+                "platform": "Linux x86_64",
+                "vendors": [
+                    ("NVIDIA Corporation", ["NVIDIA GeForce GTX 1650", "NVIDIA GeForce RTX 2070"]),
+                    ("Intel", ["Mesa Intel(R) UHD Graphics", "Mesa DRI Intel(R) HD Graphics 630"]),
+                ]
+            }
+        ]
+        
+        # Выбираем случайную платформу
+        platform_config = random.choice(platforms)
+        platform = platform_config["platform"]
+        
+        # Выбираем случайного вендора и рендерер
+        webgl_vendor, renderers = random.choice(platform_config["vendors"])
+        renderer = random.choice(renderers)
+        
+        # Случайные языки
+        language_sets = [
+            ["en-US", "en"],
+            ["en-GB", "en"],
+            ["en-US", "en", "es"],
+            ["en-GB", "en", "fr"],
+        ]
+        languages = random.choice(language_sets)
+        
+        return {
+            "languages": languages,
+            "vendor": "Google Inc.",
+            "platform": platform,
+            "webgl_vendor": webgl_vendor,
+            "renderer": renderer,
+            "fix_hairline": True
+        }
+    
     def _apply_stealth_mode(self):
         stealth(self.driver,
-            languages=["en-US", "en"],
-            vendor="Google Inc.",
-            platform="Win32",
-            webgl_vendor="Intel Inc.",
-            renderer="Intel Iris OpenGL Engine",
-            fix_hairline=True,
+            languages=self.stealth_params["languages"],
+            vendor=self.stealth_params["vendor"],
+            platform=self.stealth_params["platform"],
+            webgl_vendor=self.stealth_params["webgl_vendor"],
+            renderer=self.stealth_params["renderer"],
+            fix_hairline=self.stealth_params["fix_hairline"],
         )
 
     def _set_chrome_options(self):
         self.options = uc_webdriver_wire.ChromeOptions()
-        self.options.add_argument("--lang=en-US")
-        self.options.add_argument("--accept-language=en-US,en;q=0.9")
-        self.options.add_argument("--intl.accept_languages=en-US,en;q=0.9")
+        lang_first = self.stealth_params["languages"][0]
+        lang_str = ",".join(self.stealth_params["languages"])
+        self.options.add_argument(f"--lang={lang_first}")
+        self.options.add_argument(f"--accept-language={lang_str};q=0.9")
+        self.options.add_argument(f"--intl.accept_languages={lang_str};q=0.9")
         self.options.add_argument('--ignore-ssl-errors=yes')
         self.options.add_argument('--ignore-certificate-errors')
         self.options.add_argument('--disable-application-cache')

@@ -101,8 +101,6 @@ class GetTickets:
                 
                 if has_captcha:
                     print(f"⚠️  Капча появилась во время ожидания API!")
-                    # time.sleep(10000)
-                    self.captcha_solver.save_page_with_captcha()
                     
                     # Пытаемся решить капчу с помощью OpenCV
                     solved = self.captcha_solver.solve_slider_captcha()
