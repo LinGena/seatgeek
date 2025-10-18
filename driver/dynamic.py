@@ -119,6 +119,74 @@ class ChromeWebDriver:
                 return options;
             };
         """)
+
+        VENDOR   = "NVIDIA Corporation"
+        RENDERER = "NVIDIA GeForce RTX 3060/PCIe/SSE2"
+        REALISTIC_EXTS = [
+            "OES_texture_float","OES_element_index_uint","OES_standard_derivatives",
+            "WEBGL_compressed_texture_s3tc","WEBGL_depth_texture",
+            "EXT_texture_filter_anisotropic","OES_vertex_array_object",
+            "WEBGL_debug_renderer_info","ANGLE_instanced_arrays"
+        ]
+
+        JS = f"""
+        (() => {{
+        const SPOOF_VENDOR   = "{VENDOR}";
+        const SPOOF_RENDERER = "{RENDERER}";
+        const EXTS = {REALISTIC_EXTS!r};
+
+        const patchGL = (gl) => {{
+            if (!gl || gl.__wbPatched) return gl;
+            gl.__wbPatched = true;
+
+            const getParameter0 = gl.getParameter.bind(gl);
+            const getExt0 = gl.getExtension.bind(gl);
+            const dbg = getExt0('WEBGL_debug_renderer_info');
+
+            gl.getParameter = (p) => {{
+            try {{
+                if (dbg && p === dbg.UNMASKED_VENDOR_WEBGL)   return SPOOF_VENDOR;
+                if (dbg && p === dbg.UNMASKED_RENDERER_WEBGL) return SPOOF_RENDERER;
+            }} catch (e) {{}}
+            return getParameter0(p);
+            }};
+
+            gl.getExtension = (name) => {{
+            if (name === 'WEBGL_debug_renderer_info') {{
+                // вернём реальный ext или фальш-заглушку с константами
+                return getExt0(name) || {{ UNMASKED_VENDOR_WEBGL: 0x9245, UNMASKED_RENDERER_WEBGL: 0x9246 }};
+            }}
+            return getExt0(name);
+            }};
+
+            const getSupported0 = gl.getSupportedExtensions?.bind(gl);
+            if (getSupported0) {{
+            gl.getSupportedExtensions = () => {{
+                const set = new Set([...(getSupported0() || []), ...EXTS]);
+                return Array.from(set);
+            }};
+            }}
+            return gl;
+        }};
+
+        const ctxNames = ['webgl','experimental-webgl','webgl2'];
+        const wrapGetContext = (Cls, prop) => {{
+            if (!Cls || Cls.prototype.__wbCtxPatched) return;
+            const orig = Cls.prototype[prop];
+            Cls.prototype[prop] = function(type, attrs) {{
+            const t = (type || '').toString().toLowerCase();
+            const gl = orig.call(this, type, attrs);
+            if (ctxNames.includes(t)) return patchGL(gl);
+            return gl;
+            }};
+            Cls.prototype.__wbCtxPatched = true;
+        }};
+
+        try {{ wrapGetContext(HTMLCanvasElement, 'getContext'); }} catch(e) {{}}
+        try {{ wrapGetContext(OffscreenCanvas,   'getContext'); }} catch(e) {{}}
+        }})();
+        """
+        self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": JS})
         
 
     def _set_chrome_options(self):

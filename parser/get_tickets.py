@@ -27,8 +27,8 @@ class GetTickets:
     def get(self):
         try:
             if sys.platform == 'linux':
-                self.display = Display(visible=False, size=(1920, 1080))
-                self.display.start()
+                self.display = Display(visible=False)    
+                self.display.start()    
             chrome_driver = ChromeWebDriver()
             self.driver, self.folder_temp, self.current_proxy = chrome_driver.create_driver()
             self.db = Db()

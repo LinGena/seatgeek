@@ -79,7 +79,7 @@ def main():
 if __name__ == "__main__":
     IsDbTable().check()
     update_proxies()
-    GetEvents().get()
+    # GetEvents().get()
     
     main()
     
