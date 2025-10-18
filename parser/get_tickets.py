@@ -101,6 +101,7 @@ class GetTickets:
             while time.time() - start_time < wait_time:
                 for request in self.driver.requests:
                     if '/api/event_listings_v2' in request.url:
+                        print('found event_listings_v2')
                         if request.response and request.response.status_code == 200:
                             api_request = request
                             break
