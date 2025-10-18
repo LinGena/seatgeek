@@ -7,3 +7,4 @@ examples
 proxies/*proxies_list*
 logs
 chrome_data
+utils/captcha_solver.py

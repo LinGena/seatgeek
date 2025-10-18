@@ -6,11 +6,15 @@ import logging
 from datetime import datetime
 from driver.dynamic import ChromeWebDriver
 from utils.logger import Logger
-from utils.captcha_solver import CaptchaSolver
 from db.core import Db
+from pyvirtualdisplay import Display
+import sys
+
 
 logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
-
+logging.getLogger('seleniumwire').setLevel(logging.ERROR)
+logging.getLogger('seleniumwire.thirdparty.mitmproxy').setLevel(logging.CRITICAL)
+logging.getLogger('urllib3').setLevel(logging.ERROR)
 
 class GetTickets:
     def __init__(self):
@@ -18,42 +22,54 @@ class GetTickets:
         self.driver = None
         self.folder_temp = None
         self.logger = Logger().get_logger(__name__)
+        self.display = None
 
     def get(self):
         try:
+            if sys.platform == 'linux':
+                self.display = Display(visible=False, size=(1920, 1080))
+                self.display.start()
             chrome_driver = ChromeWebDriver()
             self.driver, self.folder_temp, self.current_proxy = chrome_driver.create_driver()
             self.db = Db()
-            self.captcha_solver = CaptchaSolver(self.driver, self.logger)
-            
-            time_start = time.time()
-            print('time_start',time_start)
-            for i in range(100):
+
+            while True:
                 self.task_id = None
                 self.task_name = None
                 event_url = self.get_event_url()
                 if not event_url:
                     break
                 self.get_api_content(event_url)
-            time_end = time.time()
-            print('time_end',time_end)
-            print('TIME for 100 =', time_end-time_start)
         except Exception as ex:
-            print(ex)
+            if 'DataDome' in str(ex):
+                self.close_driver()
+                return self.get()
+            else:
+                print(ex)
+                self.close_driver()
+                return self.get()
         finally:
-            if self.driver:
-                try:
-                    self.driver.quit()
-                except:
-                    pass
-            if self.folder_temp:
-                try:
-                    time.sleep(2)
-                    shutil.rmtree(self.folder_temp)
-                except:
-                    pass
-            if self.db:
-                self.db.close_connection()
+            self.close_driver()
+
+    def close_driver(self):
+        if self.driver:
+            try:
+                self.driver.quit()
+            except:
+                pass
+        if self.folder_temp:
+            try:
+                time.sleep(2)
+                shutil.rmtree(self.folder_temp)
+            except:
+                pass
+        if self.display:
+            try:
+                self.display.stop()
+            except:
+                pass
+        if self.db:
+            self.db.close_connection()
 
     def update_status(self, status: str):
         if self.task_id:
@@ -73,13 +89,13 @@ class GetTickets:
         except Exception as ex:
             self.logger.error(f"Ошибка при получении события: {ex}")
         return None
-
+    
     def get_api_content(self, event_url: str, wait_time: int = 30):
         try:
             self.driver.execute_cdp_cmd("Network.clearBrowserCache", {})
             del self.driver.requests
             self.driver.get(event_url)
-
+            
             api_request = None
             start_time = time.time()
             while time.time() - start_time < wait_time:
@@ -91,32 +107,17 @@ class GetTickets:
                 if api_request:
                     break 
                 time.sleep(0.5)
-                # Проверяем капчу в процессе ожидания (может появиться)
-                has_captcha, ip_blocked = self.captcha_solver.check_captcha()
-                
-                if ip_blocked:
-                    print(f"🔴 Прокси заблокирован во время ожидания!")
-                    self.update_status(None)
-                    raise Exception("Proxy blocked by DataDome, need to restart")
-                
-                if has_captcha:
-                    print(f"⚠️  Капча появилась во время ожидания API!")
-                    
-                    # Пытаемся решить капчу с помощью OpenCV
-                    solved = self.captcha_solver.solve_slider_captcha()
-                    
-                    if solved:
-                        print(f"✅ Капча решена с помощью OpenCV! Продолжаем...")
-                        # Сбрасываем таймер для ожидания API
-                        start_time = time.time()
-                    else:
-                        print(f"❌ Не удалось решить капчу автоматически")
-                        self.update_status(None)
-                        return
+                if event_url != self.driver.current_url:
+                    raise Exception(f'url unavailable')
+                has_captcha, ip_blocked = self.check_captcha()
+                if ip_blocked or has_captcha:
+                    raise Exception('DataDome')
+
             if not api_request:
                 self.update_status(None)
                 print(f'No api_request')
                 return
+            
             if api_request.response:
                 try:
                     response_body = api_request.response.body
@@ -137,6 +138,12 @@ class GetTickets:
             else:
                 self.update_status(None)
         except Exception as ex:
+            self.update_status(None)
+            if 'DataDome' in str(ex):
+                raise Exception('DataDome')
+            if 'url unavailable' in str(ex):
+                self.update_status('unavailable')
+                return
             self.logger.error(f"Ошибка: {ex}")
             self.update_status(None)
         return
@@ -235,3 +242,45 @@ class GetTickets:
             print(f'  Вставлено {total_inserted} листингов')
         except Exception as ex:
             print(f'Ошибка вставки tickets: {ex}')
+
+    def check_captcha(self) -> tuple[bool, bool]:
+        """Проверяет наличие АКТИВНОЙ капчи DataDome на странице
+        Возвращает: (найдена_капча, ip_blocked)
+        """
+        try:
+            iframes = self.driver.find_elements('tag name', 'iframe')
+            for iframe in iframes:
+                try:
+                    src = iframe.get_attribute('src') or ''
+                    
+                    if 'geo.captcha-delivery.com' not in src and 'captcha-delivery.com' not in src:
+                        continue
+                    
+                    if 't=bv' in src:
+                        return False, True
+                    
+                    if 't=fe' not in src:
+                        continue
+                    
+                    if not iframe.is_displayed():
+                        continue
+                    
+                    size = iframe.size
+                    if size['width'] == 0 or size['height'] == 0:
+                        continue
+                    
+                    visibility = iframe.value_of_css_property('visibility')
+                    display = iframe.value_of_css_property('display')
+                    
+                    if visibility == 'hidden' or display == 'none':
+                        continue
+                    
+                    return True, False
+                    
+                except Exception as ex:
+                    continue
+            
+            return False, False
+        except Exception as ex:
+            self.logger.error(f"Ошибка проверки капчи: {ex}")
+            return False, False

@@ -32,7 +32,7 @@ class CaptchaSolver:
                         continue
                     
                     if 't=bv' in src:
-                        print(f"⚠️  IP заблокирован DataDome (t=bv)")
+                        # print(f"⚠️  IP заблокирован DataDome (t=bv)")
                         return False, True
                     
                     if 't=fe' not in src:
@@ -51,7 +51,7 @@ class CaptchaSolver:
                     if visibility == 'hidden' or display == 'none':
                         continue
                     
-                    print(f"🔍 Найден активный iframe DataDome")
+                    # print(f"🔍 Найден активный iframe DataDome")
                     return True, False
                     
                 except Exception as ex:

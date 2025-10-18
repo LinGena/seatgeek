@@ -1,23 +1,32 @@
 import os
 import uuid
 import random
+import json
+import logging
+import sys
 from seleniumwire import undetected_chromedriver as uc_webdriver_wire
-from selenium_stealth import stealth
 from dotenv import load_dotenv
 from utils.func import load_from_file_json
 
+# Подавляем ошибки Selenium Wire
+logging.getLogger('seleniumwire').setLevel(logging.CRITICAL)
+logging.getLogger('seleniumwire.thirdparty.mitmproxy').setLevel(logging.CRITICAL)
+
+# Подавляем вывод mitmproxy в stderr (BrokenPipeError и т.д.)
+# Сохраняем оригинальный stderr для восстановления если нужно
+_original_stderr = sys.stderr
 
 load_dotenv(override=True)
 
 class ChromeWebDriver:
-    def create_driver(self):
+    def create_driver(self, first_run: bool = False):
         profile_id = str(uuid.uuid4())
+        self.first_run = first_run
         self.folder_temp = f"{os.path.abspath('chrome_data')}/{profile_id}"
+        self._force_en_locale()
         os.makedirs(self.folder_temp, exist_ok=True)
-        self.stealth_params = self._get_random_stealth_params()
         self._set_chrome_options()
         self._create_chromedriver()
-        self._apply_stealth_mode()
         return self.driver, self.folder_temp, self.current_proxy
 
     def _create_chromedriver(self):
@@ -29,91 +38,94 @@ class ChromeWebDriver:
             'http':self.current_proxy,
             'https':self.current_proxy
         }
+        
+        # Для каждого потока создаем свой mitmproxy на уникальном порту
+        # Это предотвращает конфликты и BrokenPipeError
+        import socket
+        def get_free_port():
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('127.0.0.1', 0))
+                s.listen(1)
+                port = s.getsockname()[1]
+            return port
+        
+        seleniumwire_port = get_free_port()
+        
         seleniumwire_options = {
             'proxy': proxy,
             'suppress_connection_errors': True,
             'disable_capture': False, 
-            'request_storage': 'memory'
+            'request_storage': 'memory',
+            'port': seleniumwire_port,  # Уникальный порт для каждого потока
+            'disable_encoding': True,  # Отключаем лишнюю обработку
         }
-        self.driver = uc_webdriver_wire.Chrome(version_main=int(driver_version),
-                                    user_data_dir=self.folder_temp,
-                                    enable_cdp_events=True,
-                                    options=self.options,
-                                    seleniumwire_options=seleniumwire_options)
+        
+        # Создаем драйвер
+        if self.first_run:
+            self.driver = uc_webdriver_wire.Chrome(version_main=int(driver_version),
+                                        user_data_dir=self.folder_temp,
+                                        options=self.options,
+                                        seleniumwire_options=seleniumwire_options)
+        else:
+            self.driver = uc_webdriver_wire.Chrome(version_main=int(driver_version),
+                                        user_data_dir=self.folder_temp,
+                                        user_multi_procs=True,
+                                        options=self.options,
+                                        seleniumwire_options=seleniumwire_options)
+        
         self.driver.set_page_load_timeout(60)
+        
+        # Подавляем traceback от mitmproxy в фоновом потоке
+        import warnings
+        warnings.filterwarnings("ignore", category=ResourceWarning)
 
-    def _get_random_stealth_params(self):
-        """Генерирует случайные но реалистичные параметры для stealth mode"""
-        
-        # Случайная платформа
-        platforms = [
+        # Отключаем логирование CDP
+        try:
+            self.driver.execute_cdp_cmd("Log.disable", {})
+        except:
+            pass
+        self.driver.execute_cdp_cmd("Network.enable", {})
+        self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": """
+                Object.defineProperty(navigator, 'language', {
+                    get: () => 'en-US'
+                });
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en']
+                });
+                Object.defineProperty(Intl, 'DateTimeFormat', {
+                    get: () => function() {
+                        return { resolvedOptions: () => ({ locale: 'en-US' }) }
+                    }
+                });
+            """
+        })
+        self.driver.execute_cdp_cmd(
+            "Network.setExtraHTTPHeaders",
             {
-                "platform": "Win32",
-                "vendors": [
-                    ("NVIDIA Corporation", ["NVIDIA GeForce GTX 1060", "NVIDIA GeForce RTX 2060", "NVIDIA GeForce RTX 3060"]),
-                    ("Intel Inc.", ["Intel(R) UHD Graphics 630", "Intel(R) HD Graphics 620", "Intel Iris OpenGL Engine"]),
-                    ("AMD", ["AMD Radeon RX 580", "AMD Radeon RX 5700", "Radeon(TM) RX Vega 10 Graphics"]),
-                ]
-            },
-            {
-                "platform": "MacIntel",
-                "vendors": [
-                    ("Apple Inc.", ["Apple M1", "Apple M2", "Apple GPU"]),
-                    ("Intel Inc.", ["Intel(R) Iris(TM) Plus Graphics 640", "Intel Iris Pro OpenGL Engine"]),
-                ]
-            },
-            {
-                "platform": "Linux x86_64",
-                "vendors": [
-                    ("NVIDIA Corporation", ["NVIDIA GeForce GTX 1650", "NVIDIA GeForce RTX 2070"]),
-                    ("Intel", ["Mesa Intel(R) UHD Graphics", "Mesa DRI Intel(R) HD Graphics 630"]),
-                ]
+                "headers": {
+                    "Accept-Language": "en-US,en;q=0.9"
+                }
             }
-        ]
-        
-        # Выбираем случайную платформу
-        platform_config = random.choice(platforms)
-        platform = platform_config["platform"]
-        
-        # Выбираем случайного вендора и рендерер
-        webgl_vendor, renderers = random.choice(platform_config["vendors"])
-        renderer = random.choice(renderers)
-        
-        # Случайные языки
-        language_sets = [
-            ["en-US", "en"],
-            ["en-GB", "en"],
-            ["en-US", "en", "es"],
-            ["en-GB", "en", "fr"],
-        ]
-        languages = random.choice(language_sets)
-        
-        return {
-            "languages": languages,
-            "vendor": "Google Inc.",
-            "platform": platform,
-            "webgl_vendor": webgl_vendor,
-            "renderer": renderer,
-            "fix_hairline": True
-        }
-    
-    def _apply_stealth_mode(self):
-        stealth(self.driver,
-            languages=self.stealth_params["languages"],
-            vendor=self.stealth_params["vendor"],
-            platform=self.stealth_params["platform"],
-            webgl_vendor=self.stealth_params["webgl_vendor"],
-            renderer=self.stealth_params["renderer"],
-            fix_hairline=self.stealth_params["fix_hairline"],
         )
+        self.driver.execute_script("""
+            const original = Intl.DateTimeFormat.prototype.resolvedOptions;
+            Intl.DateTimeFormat.prototype.resolvedOptions = function () {
+                const options = original.apply(this, arguments);
+                options.locale = 'en-US';
+                options.calendar = 'gregory';
+                options.numberingSystem = 'latn';
+                options.timeZone = 'Europe/London';
+                return options;
+            };
+        """)
+        
 
     def _set_chrome_options(self):
         self.options = uc_webdriver_wire.ChromeOptions()
-        lang_first = self.stealth_params["languages"][0]
-        lang_str = ",".join(self.stealth_params["languages"])
-        self.options.add_argument(f"--lang={lang_first}")
-        self.options.add_argument(f"--accept-language={lang_str};q=0.9")
-        self.options.add_argument(f"--intl.accept_languages={lang_str};q=0.9")
+        self.options.add_argument("--lang=en-US")
+        self.options.add_argument("--accept-language=en-US,en;q=0.9")
+        self.options.add_argument("--intl.accept_languages=en-US,en;q=0.9")
         self.options.add_argument('--ignore-ssl-errors=yes')
         self.options.add_argument('--ignore-certificate-errors')
         self.options.add_argument('--disable-application-cache')
@@ -123,3 +135,49 @@ class ChromeWebDriver:
         self.options.add_argument('--disable-setuid-sandbox')
         self.options.add_argument('--disable-logging')
         self.options.add_argument('--log-level=3')
+        self.options.add_argument("--disable-features=WebRtcHideLocalIpsWithMdns")
+        prefs = {
+            'enable_do_not_track': True,
+            "webrtc.ip_handling_policy": "disable_non_proxied_udp",
+            "webrtc.multiple_routes_enabled": False,
+            "webrtc.nonproxied_udp_enabled": False,
+            "profile.default_content_setting_values.notifications": 1,
+            'profile.managed_default_content_settings.images': 2,
+            'profile.managed_default_content_settings.media_stream': 2
+        }
+        self.options.add_experimental_option("prefs", prefs)
+
+
+    def _force_en_locale(self):
+        prefs_dir = os.path.join(self.folder_temp, "Default")
+        os.makedirs(prefs_dir, exist_ok=True)
+        prefs_file = os.path.join(prefs_dir, "Preferences")
+        prefs_data = {
+            "intl": {
+                "accept_languages": "en-US,en"
+            },
+            "browser": {
+                "check_default_browser": False
+            },
+            "sync": {
+                "setup_completed": True
+            },
+            "distribution": {
+                "suppress_first_run_default_browser_prompt": True
+            },
+            "profile": {
+                "exit_type": "None",
+                "exited_cleanly": True
+            },
+            "safebrowsing": {
+                "enabled": False
+            },
+            "extensions": {
+                "settings": {}
+            },
+            "theme": {
+                "use_system_theme": False
+            }
+        }
+        with open(prefs_file, "w", encoding='utf-8') as f:
+            json.dump(prefs_data, f, ensure_ascii=False, indent=2)
