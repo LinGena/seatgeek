@@ -44,6 +44,7 @@ def first_run():
     display = None
     try:
         if sys.platform == 'linux':
+            print('Open Dispay')
             display = Display(visible=False)    
             display.start()  
         init_driver = ChromeWebDriver()
