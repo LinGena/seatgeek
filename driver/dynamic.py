@@ -122,7 +122,7 @@ class ChromeWebDriver:
     def _set_chrome_options(self):
         if sys.platform == 'linux':
             extensions = []
-            proxy_extension_path = load_proxy(self.proxy, self.folder_temp)
+            proxy_extension_path = load_proxy(self.current_proxygit , self.folder_temp)
             extensions.append(proxy_extension_path)
             self.options.add_argument(f"--load-extension={','.join(extensions)}")
         self.options = uc_webdriver_wire.ChromeOptions()
