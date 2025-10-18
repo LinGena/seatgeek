@@ -121,7 +121,7 @@ class ChromeWebDriver:
         """)
 
         VENDOR   = "NVIDIA Corporation"
-        RENDERER = "NVIDIA GeForce RTX 3060/PCIe/SSE2"
+        RENDERER = "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti Direct3D11 vs_5_0 ps_5_0)"
         REALISTIC_EXTS = [
             "OES_texture_float","OES_element_index_uint","OES_standard_derivatives",
             "WEBGL_compressed_texture_s3tc","WEBGL_depth_texture",
@@ -135,41 +135,54 @@ class ChromeWebDriver:
         const SPOOF_RENDERER = "{RENDERER}";
         const EXTS = {REALISTIC_EXTS!r};
 
+        // Константы WEBGL_debug_renderer_info независимо от наличия экстеншена
+        const UNMASKED_VENDOR_WEBGL   = 0x9245;
+        const UNMASKED_RENDERER_WEBGL = 0x9246;
+
         const patchGL = (gl) => {{
             if (!gl || gl.__wbPatched) return gl;
             gl.__wbPatched = true;
 
-            const getParameter0 = gl.getParameter.bind(gl);
-            const getExt0 = gl.getExtension.bind(gl);
-            const dbg = getExt0('WEBGL_debug_renderer_info');
-
+            const getParameter0 = gl.getParameter?.bind(gl);
+            if (getParameter0) {{
             gl.getParameter = (p) => {{
-            try {{
-                if (dbg && p === dbg.UNMASKED_VENDOR_WEBGL)   return SPOOF_VENDOR;
-                if (dbg && p === dbg.UNMASKED_RENDERER_WEBGL) return SPOOF_RENDERER;
-            }} catch (e) {{}}
-            return getParameter0(p);
+                try {{
+                if (p === UNMASKED_VENDOR_WEBGL)   return SPOOF_VENDOR;
+                if (p === UNMASKED_RENDERER_WEBGL) return SPOOF_RENDERER;
+                }} catch (e) {{}}
+                return getParameter0(p);
             }};
-
-            gl.getExtension = (name) => {{
-            if (name === 'WEBGL_debug_renderer_info') {{
-                // вернём реальный ext или фальш-заглушку с константами
-                return getExt0(name) || {{ UNMASKED_VENDOR_WEBGL: 0x9245, UNMASKED_RENDERER_WEBGL: 0x9246 }};
             }}
-            return getExt0(name);
+
+            const getExtension0 = gl.getExtension?.bind(gl);
+            if (getExtension0) {{
+            gl.getExtension = (name) => {{
+                if (name === 'WEBGL_debug_renderer_info') {{
+                // вернём реальный объект или заглушку с нужными константами
+                return getExtension0(name) || {{
+                    UNMASKED_VENDOR_WEBGL: UNMASKED_VENDOR_WEBGL,
+                    UNMASKED_RENDERER_WEBGL: UNMASKED_RENDERER_WEBGL
+                }};
+                }}
+                return getExtension0(name);
             }};
+            }}
 
             const getSupported0 = gl.getSupportedExtensions?.bind(gl);
             if (getSupported0) {{
             gl.getSupportedExtensions = () => {{
+                try {{
                 const set = new Set([...(getSupported0() || []), ...EXTS]);
                 return Array.from(set);
+                }} catch(e) {{ return getSupported0(); }}
             }};
             }}
+
             return gl;
         }};
 
         const ctxNames = ['webgl','experimental-webgl','webgl2'];
+
         const wrapGetContext = (Cls, prop) => {{
             if (!Cls || Cls.prototype.__wbCtxPatched) return;
             const orig = Cls.prototype[prop];
