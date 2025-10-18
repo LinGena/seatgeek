@@ -117,8 +117,8 @@ class GetTickets:
 
             if not api_request:
                 self.update_status(None)
-                os.makedirs('screenshots', exist_ok=True)
-                self.driver.save_screenshot(f'screenshots/{self.task_id}.png')
+                # os.makedirs('screenshots', exist_ok=True)
+                # self.driver.save_screenshot(f'screenshots/{self.task_id}.png')
                 print(f'No api_request')
                 return
             
