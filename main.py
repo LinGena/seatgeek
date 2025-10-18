@@ -11,27 +11,21 @@ from parser.get_events import GetEvents
 
 load_dotenv(override=True)
 
-# Подавляем ошибки mitmproxy (BrokenPipeError) в stderr
-# Создаем фильтр который пропускает только важные сообщения
-
 os.environ['PYVIRTUALDISPLAY_DISPLAYFD'] = '0'
 
 class StderrFilter:
     def __init__(self, original_stderr):
         self.original_stderr = original_stderr
         self.buffer = ''
-    
+
     def write(self, text):
-        # Фильтруем сообщения от mitmproxy
         if 'BrokenPipeError' in text or 'TcpDisconnect' in text or 'seleniumwire' in text:
-            return  # Подавляем эти ошибки
-        # Пропускаем остальные сообщения
+            return  
         self.original_stderr.write(text)
-    
+
     def flush(self):
         self.original_stderr.flush()
 
-# Применяем фильтр к stderr
 sys.stderr = StderrFilter(sys.stderr)
 
 
@@ -83,9 +77,9 @@ def main():
 
 
 if __name__ == "__main__":
-    # IsDbTable().check()
-    # update_proxies()
-    # GetEvents().get()
+    IsDbTable().check()
+    update_proxies()
+    GetEvents().get()
     
     main()
     
