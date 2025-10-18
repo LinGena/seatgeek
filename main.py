@@ -7,6 +7,7 @@ from proxies.get_proxies import update_proxies
 from db.core import IsDbTable
 from parser.get_tickets import GetTickets
 from parser.get_events import GetEvents
+from pyvirtualdisplay import Display
 
 
 load_dotenv(override=True)
@@ -40,7 +41,11 @@ def run_worker(worker_id):
 def first_run():
     from driver.dynamic import ChromeWebDriver
     import shutil
+    display = None
     try:
+        if sys.platform == 'linux':
+            display = Display(visible=False)    
+            display.start()  
         init_driver = ChromeWebDriver()
         driver, folder_temp, proxy = init_driver.create_driver(first_run=True)
         try:
@@ -52,6 +57,12 @@ def first_run():
             shutil.rmtree(folder_temp)
         except:
             pass
+        if display:
+            try:
+                display.stop()
+            except:
+                pass
+
     except Exception as ex:
         print(f"⚠️ Ошибка инициализации: {ex}")
 
