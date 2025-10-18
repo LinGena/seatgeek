@@ -120,12 +120,12 @@ class ChromeWebDriver:
         )   
 
     def _set_chrome_options(self):
+        self.options = uc_webdriver_wire.ChromeOptions()
         if sys.platform == 'linux':
             extensions = []
             proxy_extension_path = load_proxy(self.current_proxy, self.folder_temp)
             extensions.append(proxy_extension_path)
             self.options.add_argument(f"--load-extension={','.join(extensions)}")
-        self.options = uc_webdriver_wire.ChromeOptions()
         self.options.add_argument("--lang=en-US")
         self.options.add_argument("--accept-language=en-US,en;q=0.9")
         self.options.add_argument("--intl.accept_languages=en-US,en;q=0.9")
