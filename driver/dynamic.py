@@ -200,6 +200,29 @@ class ChromeWebDriver:
         }})();
         """
         self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": JS})
+
+        UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.7049.95 Safari/537.36"
+
+        self.driver.execute_cdp_cmd("Network.setUserAgentOverride", {
+            "userAgent": UA,
+            "platform": "Windows",
+            "userAgentMetadata": {
+                "brands": [
+                    {"brand": "Google Chrome", "version": "135"},
+                    {"brand": "Chromium", "version": "135"}
+                ],
+                "fullVersionList": [
+                    {"brand": "Google Chrome", "version": "135.0.7049.95"},
+                    {"brand": "Chromium", "version": "135.0.7049.95"}
+                ],
+                "fullVersion": "135.0.7049.95",
+                "platform": "Windows",
+                "platformVersion": "15.0.0",
+                "architecture": "x86",
+                "model": "",
+                "mobile": False
+            }
+        })
         
 
     def _set_chrome_options(self):
