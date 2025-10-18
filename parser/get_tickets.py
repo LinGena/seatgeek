@@ -9,6 +9,7 @@ from utils.logger import Logger
 from db.core import Db
 from pyvirtualdisplay import Display
 import sys
+import os
 
 
 logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
@@ -116,6 +117,8 @@ class GetTickets:
 
             if not api_request:
                 self.update_status(None)
+                os.makedirs('screenshots', exist_ok=True)
+                self.driver.save_screenshot(f'screenshots/{self.task_id}.png')
                 print(f'No api_request')
                 return
             
